@@ -1,0 +1,819 @@
+<title>Facebook Payslip to CSV</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+  /* Layout: one quiet column, three numbered steps (they are a real sequence),
+     hairline rules instead of cards, figures in a mono face with tabular digits. */
+  :root {
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --fg: #1a2230;
+    --muted: #5d6b7c;
+    --line: #d7dde6;
+    --line-strong: #b9c2cf;
+    --accent: #1e4d8b;
+    --accent-fg: #ffffff;
+    --accent-soft: #e4edf8;
+    --good: #1c7a4c;
+    --good-soft: #e3f3ea;
+    --warn: #9a6a12;
+    --warn-soft: #fbf1d8;
+    --bad: #b3261e;
+    --bad-soft: #fbe5e3;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f141b; --surface: #171e28; --fg: #e5eaf1; --muted: #98a4b4;
+      --line: #28323f; --line-strong: #3a4654; --accent: #86b4ee; --accent-fg: #0f141b;
+      --accent-soft: #1b2a3d; --good: #52c58b; --good-soft: #15352a; --warn: #e3b24c;
+      --warn-soft: #3a2f14; --bad: #f08a80; --bad-soft: #3d1f1d; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141b; --surface: #171e28; --fg: #e5eaf1; --muted: #98a4b4;
+    --line: #28323f; --line-strong: #3a4654; --accent: #86b4ee; --accent-fg: #0f141b;
+    --accent-soft: #1b2a3d; --good: #52c58b; --good-soft: #15352a; --warn: #e3b24c;
+    --warn-soft: #3a2f14; --bad: #f08a80; --bad-soft: #3d1f1d; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 32px 64px;
+  }
+  main { max-width: 1040px; margin: 0 auto; display: grid; gap: 40px; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  h1 { font-family: var(--font-display); font-weight: 600; font-size: 2rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; font-weight: 600; }
+  h3 { font-size: 0.95rem; font-weight: 600; }
+  p { margin: 0; }
+  .lede { color: var(--muted); max-width: 62ch; }
+  .eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  header { display: grid; gap: 8px; padding-bottom: 24px; border-bottom: 1px solid var(--line-strong); }
+  section { display: grid; gap: 16px; }
+  .step-head { display: flex; align-items: baseline; gap: 12px; }
+  .step-num { font-family: var(--font-mono); color: var(--muted); font-size: 0.9rem; }
+  .hint { color: var(--muted); font-size: 0.9rem; max-width: 70ch; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+  code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  /* Drop zone */
+  .drop {
+    border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 28px 20px; text-align: center;
+    background: var(--surface); display: grid; gap: 8px; justify-items: center; cursor: pointer;
+  }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .drop strong { font-weight: 600; }
+  .drop .hint { text-align: center; }
+
+  /* Buttons and controls */
+  button, .btn {
+    font: inherit; font-weight: 500; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg);
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, .drop:focus-within {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.small { padding: 4px 10px; font-size: 0.85rem; }
+  button.icon { width: 38px; height: 38px; padding: 0; display: inline-grid; place-items: center; }
+  button.icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  input[type="text"], input[type="password"], input[type="url"], select, textarea {
+    font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0;
+  }
+  textarea { font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.4; min-height: 180px; resize: vertical; }
+  label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+  label > span.req { color: var(--fg); }
+  .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 400; }
+  .check input { width: auto; }
+
+  /* Summary strip */
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+  .strip > div { padding: 12px 16px; border-right: 1px solid var(--line); display: grid; gap: 2px; min-width: 0; }
+  .strip > div:last-child { border-right: 0; }
+  .strip .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.1rem; font-weight: 500; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; }
+  .sub { color: var(--muted); font-size: 0.82rem; }
+  details > summary { cursor: pointer; list-style: none; color: var(--accent); font-size: 0.85rem; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] > summary { margin-bottom: 8px; }
+  .lines { width: 100%; font-size: 0.85rem; }
+  .lines td { padding: 4px 8px; border-bottom: 1px dashed var(--line); }
+  .lines tr:last-child td { border-bottom: 0; }
+  .in { color: var(--good); }
+  .out { color: var(--fg); }
+
+  /* Pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.good { color: var(--good); background: var(--good-soft); }
+  .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.bad { color: var(--bad); background: var(--bad-soft); }
+  .pill.muted { color: var(--muted); background: var(--accent-soft); }
+
+  /* Export panel */
+  .send { display: grid; gap: 14px; align-content: start; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+  .notice { padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; border: 1px solid var(--line); }
+  .notice.warn { background: var(--warn-soft); border-color: transparent; color: var(--fg); }
+  .notice.bad { background: var(--bad-soft); border-color: transparent; }
+  .notice.good { background: var(--good-soft); border-color: transparent; }
+  ol.steps { margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.9rem; display: grid; gap: 4px; }
+  ol.steps li::marker { color: var(--fg); font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
+  @media (prefers-reduced-motion: no-preference) { button { transition: filter 120ms, border-color 120ms; } }
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow">Payslip export tool</p>
+    <h1>Facebook payslip to CSV</h1>
+    <p class="lede">Drop Facebook UK payslip PDFs here. Each one becomes a set of transaction rows for a payroll account: gross pay as income, tax, National Insurance and pension as outflows, and the net pay as an outflow you match to the real bank deposit in your finance app. Everything is parsed in your browser; nothing is uploaded anywhere.</p>
+  </header>
+
+  <section id="step-files">
+    <div class="step-head"><span class="step-num">1</span><h2>Payslips</h2></div>
+    <label class="drop" id="drop" tabindex="0">
+      <strong>Drop payslip PDFs here or click to choose</strong>
+      <span class="hint">Single-page UK payslips with Payments, Deductions and Year to Date columns. Every total is checked against its line items, so a misread payslip is flagged instead of imported.</span>
+      <input type="file" id="file-input" accept="application/pdf" multiple>
+    </label>
+    <div class="strip" id="summary" hidden>
+      <div><span class="eyebrow">Payslips</span><span class="val" id="sum-count">0</span></div>
+      <div><span class="eyebrow">Gross pay</span><span class="val" id="sum-gross">0</span></div>
+      <div><span class="eyebrow">Tax and NI</span><span class="val" id="sum-tax">0</span></div>
+      <div><span class="eyebrow">Pension sacrifice</span><span class="val" id="sum-pension">0</span></div>
+      <div><span class="eyebrow">Net pay</span><span class="val" id="sum-net">0</span></div>
+    </div>
+    <div class="table-wrap" id="payslip-table-wrap" hidden>
+      <table id="payslip-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="select-all" checked aria-label="Select all payslips"></th>
+            <th>File</th><th>Period</th><th>Pay date</th>
+            <th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net pay</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="payslip-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="step-mapping" hidden>
+    <div class="step-head"><span class="step-num">2</span><h2>Categories</h2></div>
+    <p class="hint">Each payslip label maps to a category written as <code>Parent:Child</code>. Leave a cell blank to export that line uncategorised. Your edits are remembered in this browser.</p>
+    <div class="table-wrap">
+      <table id="mapping-table">
+        <thead><tr><th>Payslip label</th><th>Direction</th><th>Seen</th><th>Category</th></tr></thead>
+        <tbody id="mapping-rows"></tbody>
+      </table>
+    </div>
+    <div class="row"><button type="button" id="reset-mapping" class="small">Reset to suggested categories</button></div>
+  </section>
+
+  <section id="step-send" hidden>
+    <div class="step-head"><span class="step-num">3</span><h2>Export CSV</h2></div>
+    <p class="hint">Copy the CSV, save it as a <code>.csv</code> file and import it into your finance app against a dedicated payroll account (a manual checking account in the payslip currency, opening balance 0). Columns are <code>date,amount,name,currency,category,tags,account,notes</code>; inflows are positive and outflows negative.</p>
+    <div class="send">
+      <div class="field-row">
+        <label><span>Payroll account name</span><input type="text" id="csv-account" placeholder="Salary (Facebook UK)"></label>
+        <label><span>Currency</span><input type="text" id="csv-currency" value="GBP"></label>
+      </div>
+      <div class="row">
+        <span class="hint" id="csv-count"></span>
+        <span class="spacer"></span>
+        <button type="button" class="icon" id="copy-csv" aria-label="Copy CSV" title="Copy CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <button type="button" class="icon primary" id="download-csv" aria-label="Download CSV" title="Download CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+      </div>
+      <p class="hint" id="download-note" hidden>If no file appeared, this view blocks downloads. Open the page from its own file instead, or use Copy CSV and save the text as a <code>.csv</code> file.</p>
+      <textarea id="csv-output" readonly spellcheck="false" aria-label="CSV output"></textarea>
+    </div>
+    <div class="notice" id="transfer-note">
+      Each payslip nets to zero in the payroll account: gross pay in, deductions out, and a final "Net pay" outflow equal to the deposit that reaches your bank. Match that outflow with the bank deposit as a transfer in your finance app, so the salary is counted once, as gross income, with the deductions shown as expenses.
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+// Payslip parsing shared by the browser page and the Node test harness.
+// Works on pdf.js text items (position-aware), rebuilds the payslip's text
+// layout line by line, then reads the three side-by-side tables
+// (Payments | Deductions | Year to Date) and the summary block.
+//
+// Money is handled in integer pence so totals can be checked exactly.
+(function (root) {
+  "use strict";
+
+  const AMOUNT = "-?\\d{1,3}(?:,\\d{3})*\\.\\d{2}|-?\\d+\\.\\d{2}";
+  // "Label [:] [units] [rate] [*] amount" - label starts with a letter and has
+  // no digits; numeric or marker columns before the amount are skipped.
+  const ITEM = new RegExp(
+    "([A-Za-z][A-Za-z &/.'()-]*?)\\s*:?\\s+(?:[\\d,.*-]+\\s+)*(" + AMOUNT + ")(?=\\s|$)",
+    "g"
+  );
+  const TOTALS = new RegExp(
+    "Total Payment\\s*:\\s*(" + AMOUNT + ")\\s+Total Deduction\\s*:\\s*(" + AMOUNT + ")\\s+Net Pay\\s*:\\s*(" + AMOUNT + ")"
+  );
+  const TABLE_HEADER = /^\s*Payments\b.*\bDeductions\b.*\bYear to Date\b/i;
+  const SUMMARY_HEADER = /\bThis Period\b.*\bYear To Date\b.*\bGross Benefits\b/i;
+  const EMPLOYER_SECTION = /ER Pension This Period/i;
+  const COLUMN_TOLERANCE = 2;
+
+  // Default category guesses. First match wins, so specific rules come before /tax/.
+  const CATEGORY_RULES = [
+    [/national insurance|\bnic\b|\bni\b/i, "Taxes:National Insurance"],
+    [/pension|\bpen\b/i, "Savings & Investments:Pension Contributions"],
+    [/bonus|sign-on|sign on/i, "Income:Bonus"],
+    [/\brsu|stock|share/i, "Income:Stock Compensation"],
+    [/dividend/i, "Income:Dividend Equivalents"],
+    [/transport|commut/i, "Income:Benefit Reimbursements"],
+    [/elder care|child ?care|wellness|gym/i, "Income:Benefit Reimbursements"],
+    [/salary|wage/i, "Income:Salary"],
+    [/tax/i, "Taxes:Income Tax"],
+  ];
+  const FALLBACK_INFLOW = "Income";
+  const FALLBACK_OUTFLOW = "Payroll Deductions";
+
+  function pence(text) {
+    const negative = text.trim().startsWith("-");
+    const digits = text.replace(/[^\d]/g, "");
+    const value = parseInt(digits, 10);
+    return negative ? -value : value;
+  }
+
+  function formatPence(value, currency) {
+    const abs = Math.abs(value);
+    const major = Math.floor(abs / 100);
+    const minor = String(abs % 100).padStart(2, "0");
+    const grouped = major.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (value < 0 ? "-" : "") + (currency ? currency + " " : "") + grouped + "." + minor;
+  }
+
+  function decimalString(value) {
+    const abs = Math.abs(value);
+    return (value < 0 ? "-" : "") + Math.floor(abs / 100) + "." + String(abs % 100).padStart(2, "0");
+  }
+
+  // pdf.js text items -> array of layout strings, top to bottom. Each item is
+  // placed at a character column derived from its x position, so columns line
+  // up the way they do on the printed payslip.
+  function linesFromTextContent(items) {
+    const placed = items
+      .filter((item) => item.str && item.str.trim().length > 0)
+      .map((item) => ({
+        str: item.str,
+        x: item.transform[4],
+        y: item.transform[5],
+        width: item.width,
+      }));
+    if (placed.length === 0) return [];
+
+    const widths = placed
+      .filter((item) => item.str.trim().length > 2 && item.width > 0)
+      .map((item) => item.width / item.str.length)
+      .sort((a, b) => a - b);
+    const charWidth = widths.length ? widths[Math.floor(widths.length / 2)] : 5;
+
+    // Cluster rows by y (pdf y grows upward).
+    const rows = [];
+    placed
+      .sort((a, b) => b.y - a.y || a.x - b.x)
+      .forEach((item) => {
+        const row = rows.find((r) => Math.abs(r.y - item.y) <= 2.5);
+        if (row) row.items.push(item);
+        else rows.push({ y: item.y, items: [item] });
+      });
+
+    return rows.map((row) => {
+      let line = "";
+      row.items
+        .sort((a, b) => a.x - b.x)
+        .forEach((item) => {
+          const col = Math.round(item.x / charWidth);
+          if (col > line.length) line += " ".repeat(col - line.length);
+          else if (line.length > 0 && !line.endsWith(" ") && !item.str.startsWith(" ")) line += " ";
+          line += item.str;
+        });
+      return line.replace(/\s+$/, "");
+    });
+  }
+
+  function field(lines, label) {
+    const pattern = new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*:\\s*(\\S.*?)(?:\\s{2,}|$)");
+    for (const line of lines) {
+      const match = line.match(pattern);
+      if (match) return match[1].trim();
+    }
+    throw new Error('Could not find "' + label + '" on the payslip');
+  }
+
+  function itemsByColumn(line, columns) {
+    const found = [];
+    ITEM.lastIndex = 0;
+    let match;
+    while ((match = ITEM.exec(line)) !== null) {
+      const start = match.index + match[0].search(/[A-Za-z]/);
+      let column = 0;
+      columns.forEach((col, index) => {
+        if (col !== null && col !== -1 && start >= col - COLUMN_TOLERANCE) column = index;
+      });
+      found.push({ column, label: match[1].trim(), amount: pence(match[2]) });
+    }
+    return found;
+  }
+
+  function parseTables(lines) {
+    const headerIndex = lines.findIndex((line) => TABLE_HEADER.test(line));
+    if (headerIndex === -1) throw new Error("Could not find the Payments / Deductions / Year to Date table");
+    const header = lines[headerIndex];
+    const columns = [0, header.search(/Deductions/i), header.search(/Year to Date/i)];
+
+    const payments = [], deductions = [], yearToDate = [], employerContributions = [];
+    let ytdTarget = yearToDate;
+
+    for (const line of lines.slice(headerIndex + 1)) {
+      if (/^\s*Total Payment/.test(line)) break;
+      if (EMPLOYER_SECTION.test(line)) ytdTarget = employerContributions;
+      for (const item of itemsByColumn(line, columns)) {
+        const entry = { label: item.label, amount: item.amount };
+        if (item.column === 0) payments.push(entry);
+        else if (item.column === 1) deductions.push(entry);
+        else ytdTarget.push(entry);
+      }
+    }
+    return { payments, deductions, yearToDate, employerContributions };
+  }
+
+  function parseTotals(lines) {
+    for (const line of lines) {
+      const match = line.match(TOTALS);
+      if (match) return { totalPayment: pence(match[1]), totalDeduction: pence(match[2]), netPay: pence(match[3]) };
+    }
+    throw new Error("Could not find the Total Payment / Total Deduction / Net Pay line");
+  }
+
+  function summaryKey(label) {
+    return label.toLowerCase().replace(/\s+/g, "_");
+  }
+
+  function parseSummary(lines) {
+    const headerIndex = lines.findIndex((line) => SUMMARY_HEADER.test(line));
+    const summary = {}, summaryYtd = {}, benefits = [];
+    if (headerIndex === -1) return { summary, summaryYtd, benefits };
+    const header = lines[headerIndex];
+    const columns = [0, header.search(/Year To Date/i), header.search(/Gross Benefits/i)];
+
+    for (const line of lines.slice(headerIndex + 1)) {
+      if (/^\s*-{3,}\s*$/.test(line)) continue;
+      if (line.trim() === "" && Object.keys(summary).length > 0) break;
+      for (const item of itemsByColumn(line, columns)) {
+        if (item.column === 0) summary[summaryKey(item.label)] = item.amount;
+        else if (item.column === 1) summaryYtd[summaryKey(item.label)] = item.amount;
+        else benefits.push({ label: item.label, amount: item.amount });
+      }
+    }
+    return { summary, summaryYtd, benefits };
+  }
+
+  function parseDate(value) {
+    const match = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) throw new Error("Unrecognised pay date " + JSON.stringify(value) + ", expected DD.MM.YYYY");
+    return match[3] + "-" + match[2] + "-" + match[1];
+  }
+
+  function slug(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  function sum(items) {
+    return items.reduce((total, item) => total + item.amount, 0);
+  }
+
+  function parsePayslipLines(lines) {
+    const tables = parseTables(lines);
+    const totals = parseTotals(lines);
+    const summaryParts = parseSummary(lines);
+    const employer = field(lines, "Company Name");
+    const payPeriod = field(lines, "Pay Period");
+
+    const payslip = Object.assign(
+      {
+        employer,
+        employeeNumber: field(lines, "Employee Number"),
+        payDate: parseDate(field(lines, "Pay Date")),
+        payPeriod,
+        taxPeriod: field(lines, "Tax Period"),
+        taxCode: field(lines, "Tax Code"),
+        reference: slug(employer) + "-" + payPeriod.replace("/", "-"),
+      },
+      tables,
+      totals,
+      summaryParts
+    );
+
+    const problems = [];
+    if (sum(payslip.payments) !== payslip.totalPayment)
+      problems.push("payments sum to " + decimalString(sum(payslip.payments)) + " but total payment is " + decimalString(payslip.totalPayment));
+    if (sum(payslip.deductions) !== payslip.totalDeduction)
+      problems.push("deductions sum to " + decimalString(sum(payslip.deductions)) + " but total deduction is " + decimalString(payslip.totalDeduction));
+    if (payslip.totalPayment - payslip.totalDeduction !== payslip.netPay)
+      problems.push("total payment minus deductions is not the net pay");
+    if (problems.length) throw new Error("Payslip " + payslip.reference + " does not add up: " + problems.join("; "));
+
+    return payslip;
+  }
+
+  function defaultCategoryFor(label, inflow) {
+    for (const [pattern, category] of CATEGORY_RULES) {
+      if (pattern.test(label)) return category;
+    }
+    return inflow ? FALLBACK_INFLOW : FALLBACK_OUTFLOW;
+  }
+
+  function summaryNotes(payslip, currency) {
+    const parts = [
+      "Payslip " + payslip.payPeriod + " (tax period " + payslip.taxPeriod + "), " + payslip.employer + ", paid " + payslip.payDate + ".",
+    ];
+    if (payslip.taxCode) parts.push("Tax code " + payslip.taxCode + ".");
+    if (payslip.summary.ers_ni !== undefined) parts.push("Employer NI " + formatPence(payslip.summary.ers_ni, currency) + ".");
+    payslip.employerContributions.forEach((item) => parts.push("Employer " + item.label + " " + formatPence(item.amount, currency) + "."));
+    if (payslip.benefits.length)
+      parts.push("Benefits in kind: " + payslip.benefits.map((item) => item.label + " " + formatPence(item.amount, currency)).join(", ") + ".");
+    return parts.join(" ");
+  }
+
+  // Turns a payslip into transaction lines. Internally inflows are negative and
+  // outflows positive (the sign flips on CSV output). categoryFor(label, inflow)
+  // returns "Parent:Child" or "Parent".
+  function planLines(payslip, options) {
+    const categoryFor = options.categoryFor || defaultCategoryFor;
+    const currency = options.currency || "GBP";
+    const lines = [];
+    const used = {};
+    const key = (label) => {
+      const base = slug(label);
+      used[base] = (used[base] || 0) + 1;
+      return used[base] === 1 ? base : base + "-" + used[base];
+    };
+
+    payslip.payments.forEach((item) => {
+      const inflow = item.amount > 0;
+      lines.push({
+        key: key(item.label),
+        label: item.label,
+        name: item.label,
+        inflow,
+        amount: inflow ? -item.amount : Math.abs(item.amount),
+        category: categoryFor(item.label, inflow),
+        notes: "",
+      });
+    });
+    payslip.deductions.forEach((item) => {
+      lines.push({
+        key: key(item.label),
+        label: item.label,
+        name: item.label,
+        inflow: false,
+        amount: item.amount,
+        category: categoryFor(item.label, false),
+        notes: "",
+      });
+    });
+    lines.push({
+      key: "net-pay",
+      label: "Net pay",
+      name: options.bankAccountName ? "Net pay to " + options.bankAccountName : "Net pay",
+      inflow: false,
+      amount: payslip.netPay,
+      category: "",
+      notes: "",
+    });
+
+    let salaryIndex = 0;
+    lines.forEach((line, index) => { if (line.amount < lines[salaryIndex].amount) salaryIndex = index; });
+    lines[salaryIndex].notes = summaryNotes(payslip, currency);
+    return lines;
+  }
+
+  function csvEscape(value) {
+    const text = String(value == null ? "" : value);
+    return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  // CSV columns: date,amount,name,currency,category,tags,account,notes with
+  // inflows positive and outflows negative, the convention most importers expect.
+  function toCsv(plans, options) {
+    const rows = [["date", "amount", "name", "currency", "category", "tags", "account", "notes"]];
+    plans.forEach(({ payslip, lines }) => {
+      lines.forEach((line) => {
+        rows.push([
+          payslip.payDate,
+          decimalString(-line.amount),
+          line.name,
+          options.currency || "",
+          line.category || "",
+          "",
+          options.accountName || "",
+          line.notes || "",
+        ]);
+      });
+    });
+    return rows.map((row) => row.map(csvEscape).join(",")).join("\n") + "\n";
+  }
+
+  root.PayslipParser = {
+    linesFromTextContent,
+    parsePayslipLines,
+    planLines,
+    defaultCategoryFor,
+    toCsv,
+    formatPence,
+    decimalString,
+    CATEGORY_RULES,
+  };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+(function () {
+  "use strict";
+  const P = window.PayslipParser;
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const state = {
+    payslips: [],          // { file, payslip?, error?, selected }
+    mapping: {},           // label -> category text
+    directions: {},        // label -> "in" | "out"
+    currency: "GBP",
+  };
+
+  function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ } }
+  function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+
+  const money = (pence, currency) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || state.currency, minimumFractionDigits: 2 }).format(pence / 100);
+    } catch (e) { return P.formatPence(pence, currency || state.currency); }
+  };
+
+  // ---- Step 1: files -------------------------------------------------------
+  const drop = $("drop"), fileInput = $("file-input");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInput.value = ""; });
+
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+    for (const file of files) {
+      if (state.payslips.some((p) => p.file.name === file.name && p.file.size === file.size)) continue;
+      const entry = { file, selected: true };
+      state.payslips.push(entry);
+      try {
+        entry.payslip = await parsePdf(file);
+      } catch (e) {
+        entry.error = e.message || String(e);
+      }
+    }
+    state.payslips.sort((a, b) => (a.payslip?.payDate || "9999").localeCompare(b.payslip?.payDate || "9999"));
+    refreshMapping();
+    render();
+  }
+
+  async function parsePdf(file) {
+    if (!window.pdfjsLib) throw new Error("The PDF library did not load; check your connection and reload the page.");
+    const data = new Uint8Array(await file.arrayBuffer());
+    const doc = await pdfjsLib.getDocument({ data }).promise;
+    const page = await doc.getPage(1);
+    const content = await page.getTextContent();
+    const lines = P.linesFromTextContent(content.items);
+    return P.parsePayslipLines(lines);
+  }
+
+  // ---- Step 2: mapping -----------------------------------------------------
+  function refreshMapping() {
+    const saved = load("facebook-payslip2csv:mapping", {});
+    state.directions = {};
+    const seen = {};
+    state.payslips.filter((p) => p.payslip).forEach(({ payslip }) => {
+      payslip.payments.forEach((item) => { state.directions[item.label] = item.amount > 0 ? "in" : "out"; seen[item.label] = (seen[item.label] || 0) + 1; });
+      payslip.deductions.forEach((item) => { state.directions[item.label] = "out"; seen[item.label] = (seen[item.label] || 0) + 1; });
+    });
+    state.seen = seen;
+    Object.keys(state.directions).forEach((label) => {
+      if (state.mapping[label] === undefined) {
+        state.mapping[label] = saved[label] !== undefined ? saved[label] : P.defaultCategoryFor(label, state.directions[label] === "in");
+      }
+    });
+  }
+
+  function categoryFor(label, inflow) {
+    const value = state.mapping[label];
+    if (value === undefined) return P.defaultCategoryFor(label, inflow);
+    return value.trim();
+  }
+
+  function plansForSelected() {
+    return state.payslips
+      .filter((p) => p.payslip && p.selected)
+      .map((p) => ({ payslip: p.payslip, lines: P.planLines(p.payslip, { categoryFor, currency: state.currency, bankAccountName: "" }) }));
+  }
+
+  $("reset-mapping").addEventListener("click", () => {
+    Object.keys(state.directions).forEach((label) => { state.mapping[label] = P.defaultCategoryFor(label, state.directions[label] === "in"); });
+    store("facebook-payslip2csv:mapping", state.mapping);
+    render();
+  });
+
+  // ---- Rendering -----------------------------------------------------------
+  function render() {
+    const parsed = state.payslips.filter((p) => p.payslip);
+    $("summary").hidden = parsed.length === 0;
+    $("payslip-table-wrap").hidden = state.payslips.length === 0;
+    $("step-mapping").hidden = parsed.length === 0;
+    $("step-send").hidden = parsed.length === 0;
+
+    const selected = parsed.filter((p) => p.selected).map((p) => p.payslip);
+    const gross = selected.reduce((t, p) => t + p.payments.filter((i) => i.amount > 0).reduce((s, i) => s + i.amount, 0), 0);
+    const pension = selected.reduce((t, p) => t + p.payments.filter((i) => i.amount < 0).reduce((s, i) => s - i.amount, 0), 0);
+    const tax = selected.reduce((t, p) => t + p.totalDeduction, 0);
+    const net = selected.reduce((t, p) => t + p.netPay, 0);
+    $("sum-count").textContent = selected.length;
+    $("sum-gross").textContent = money(gross);
+    $("sum-tax").textContent = money(tax);
+    $("sum-pension").textContent = money(pension);
+    $("sum-net").textContent = money(net);
+
+    const rows = $("payslip-rows");
+    rows.innerHTML = "";
+    state.payslips.forEach((entry, index) => {
+      const tr = document.createElement("tr");
+      if (entry.error) {
+        tr.innerHTML = `<td></td><td class="mono">${esc(entry.file.name)}</td><td colspan="5" class="sub">${esc(entry.error)}</td><td><span class="pill bad">Not imported</span></td>`;
+      } else {
+        const p = entry.payslip;
+        const grossP = p.payments.filter((i) => i.amount > 0).reduce((s, i) => s + i.amount, 0);
+        const lines = P.planLines(p, { categoryFor, currency: state.currency, bankAccountName: "" });
+        tr.innerHTML = `
+          <td><input type="checkbox" data-index="${index}" ${entry.selected ? "checked" : ""} aria-label="Include ${esc(p.reference)}"></td>
+          <td><div class="mono">${esc(entry.file.name)}</div><div class="sub">${esc(p.employer)}</div></td>
+          <td>${esc(p.payPeriod)}<div class="sub">tax period ${esc(p.taxPeriod)}</div></td>
+          <td class="mono">${esc(p.payDate)}</td>
+          <td class="num">${money(grossP)}</td>
+          <td class="num">${money(p.totalDeduction + (grossP - p.totalPayment))}</td>
+          <td class="num">${money(p.netPay)}</td>
+          <td><span class="pill good">Balanced</span>
+            <details><summary>${lines.length} lines</summary><table class="lines">${lines.map((l) => `
+              <tr><td>${esc(l.name)}</td><td class="sub">${esc(l.category || "transfer, matched after import")}</td><td class="num ${l.inflow ? "in" : "out"}">${l.inflow ? "+" : "−"}${money(Math.abs(l.amount))}</td></tr>`).join("")}</table></details></td>`;
+      }
+      rows.appendChild(tr);
+    });
+    rows.querySelectorAll("input[type=checkbox]").forEach((box) => box.addEventListener("change", () => {
+      state.payslips[Number(box.dataset.index)].selected = box.checked; render();
+    }));
+
+    const mapRows = $("mapping-rows");
+    mapRows.innerHTML = "";
+    Object.keys(state.directions).sort().forEach((label) => {
+      const tr = document.createElement("tr");
+      const dir = state.directions[label];
+      tr.innerHTML = `<td>${esc(label)}</td><td><span class="pill ${dir === "in" ? "good" : "muted"}">${dir === "in" ? "Income" : "Deduction"}</span></td><td class="num">${state.seen[label]}×</td><td><input type="text" data-label="${esc(label)}" value="${esc(state.mapping[label] || "")}" aria-label="Category for ${esc(label)}"></td>`;
+      mapRows.appendChild(tr);
+    });
+    mapRows.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+      state.mapping[input.dataset.label] = input.value;
+      store("facebook-payslip2csv:mapping", state.mapping);
+      renderOutputs();
+    }));
+
+    renderOutputs();
+  }
+
+  function renderOutputs() {
+    const plans = plansForSelected();
+    const lineCount = plans.reduce((t, p) => t + p.lines.length, 0);
+    $("csv-output").value = P.toCsv(plans, { accountName: $("csv-account").value, currency: $("csv-currency").value.trim() || state.currency });
+    $("csv-count").textContent = `${lineCount} rows from ${plans.length} payslip${plans.length === 1 ? "" : "s"}`;
+  }
+
+  $("csv-account").addEventListener("input", renderOutputs);
+  $("csv-currency").addEventListener("input", renderOutputs);
+  $("select-all").addEventListener("change", (e) => { state.payslips.forEach((p) => { p.selected = e.target.checked; }); render(); });
+
+  const ICONS = {
+    copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+  };
+  // Swap an icon button's glyph and label for two seconds, then restore it.
+  function flash(button, icon, label, restoreIcon, restoreLabel) {
+    button.innerHTML = ICONS[icon]; button.setAttribute("aria-label", label); button.title = label;
+    setTimeout(() => { button.innerHTML = ICONS[restoreIcon]; button.setAttribute("aria-label", restoreLabel); button.title = restoreLabel; }, 2000);
+  }
+
+  $("copy-csv").addEventListener("click", async () => {
+    const text = $("csv-output").value;
+    const button = $("copy-csv");
+    try {
+      await navigator.clipboard.writeText(text);
+      flash(button, "check", "Copied", "copy", "Copy CSV");
+    } catch (e) {
+      $("csv-output").focus(); $("csv-output").select();
+      flash(button, "copy", "Text selected, press Ctrl+C or Cmd+C to copy", "copy", "Copy CSV");
+    }
+  });
+
+  function csvFileName() {
+    const dates = plansForSelected().map((p) => p.payslip.payDate).filter(Boolean).sort();
+    if (!dates.length) return "facebook-payslips.csv";
+    const first = dates[0], last = dates[dates.length - 1];
+    return first === last ? `facebook-payslip-${first}.csv` : `facebook-payslips-${first}_${last}.csv`;
+  }
+
+  // Inside the Claude artifact viewer, downloads go through its `downloads`
+  // capability (the viewer confirms the save); elsewhere the browser's own
+  // save picker or a plain download is used.
+  const framedByClaude = !!(window.claude && typeof window.claude.use === "function");
+  const downloadsReady = framedByClaude ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null);
+
+  $("download-csv").addEventListener("click", async () => {
+    const text = $("csv-output").value;
+    const name = csvFileName();
+    const note = $("download-note");
+    const button = $("download-csv");
+    note.hidden = true;
+    const downloads = await downloadsReady;
+    if (downloads) {
+      button.disabled = true;
+      try {
+        await downloads.save({ filename: name, data: text });
+        flash(button, "check", "Saved", "download", "Download CSV");
+        return;
+      } catch (e) {
+        if (e && (e.code === "declined" || e.code === "rate_limited")) return;
+        // any other outcome: fall through to the ordinary download
+      } finally { button.disabled = false; }
+    }
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }] });
+        const writable = await handle.createWritable();
+        await writable.write(text);
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return; // user cancelled the dialog
+        // fall through to the plain download
+      }
+    }
+    const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (framedByClaude) note.hidden = false; // a framed page's plain download is likely blocked
+  });
+
+  // ---- Step 3: CSV settings ------------------------------------------------
+  const settings = load("facebook-payslip2csv:settings", {});
+  $("csv-account").value = settings.csvAccount || "";
+  if (settings.currency) { $("csv-currency").value = settings.currency; state.currency = settings.currency; }
+  function saveSettings() {
+    store("facebook-payslip2csv:settings", { csvAccount: $("csv-account").value.trim(), currency: $("csv-currency").value.trim() || "GBP" });
+  }
+  $("csv-account").addEventListener("change", saveSettings);
+  $("csv-currency").addEventListener("change", () => { state.currency = $("csv-currency").value.trim() || "GBP"; saveSettings(); render(); });
+
+  function esc(text) {
+    return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  render();
+})();
+</script>

@@ -1,0 +1,4 @@
+# Never commit payslips
+*.pdf
+*.csv
+node_modules/
